@@ -5,9 +5,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     List<Recipe> findByUserTelegramChatId(Long telegramChatId);
-    List<Recipe> findByUserTelegramChatIdAndTitleContainingIgnoreCase(Long telegramChatId, String title);
+
+    Optional<Recipe> findByUserTelegramChatIdAndId(Long telegramChatId, Long id);
 }
+
+

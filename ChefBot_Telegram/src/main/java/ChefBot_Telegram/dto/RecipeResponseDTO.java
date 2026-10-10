@@ -3,6 +3,8 @@ package ChefBot_Telegram.dto;
 import java.util.List;
 
 public record RecipeResponseDTO(
+    Boolean isRecipe,
+    String refusalReason,
     String title,
     String category,
     String sourceAuthor,
@@ -11,3 +13,4 @@ public record RecipeResponseDTO(
     List<IngredientDTO> ingredients,
     List<InstructionDTO> instructions
 ) {}
+
