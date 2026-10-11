@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+ChefBot_Telegram/.gradle/
+ChefBot_Telegram/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Database files
+data/
+ChefBot_Telegram/data/
+*.db
+*.mv.db
+*.trace.db
+
+# IDE & Editor
+.idea/
+*.iml
+.vscode/
+.settings/
+.project/
+.classpath
+
+# Sensitive files
+application.properties
+**/src/main/resources/application.properties
+!**/src/main/resources/application.properties.example
+!**/src/test/resources/application.properties
