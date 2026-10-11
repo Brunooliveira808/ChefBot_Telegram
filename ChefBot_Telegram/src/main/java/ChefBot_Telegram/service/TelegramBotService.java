@@ -31,24 +31,28 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
     private final TelegramClient telegramClient;
     private final GeminiService geminiService;
     private final RecipeService recipeService;
+    private final UserSessionService userSessionService;
 
     @Autowired
     public TelegramBotService(
             @Value("${telegram.bot.token}") String botToken,
             GeminiService geminiService,
-            RecipeService recipeService) {
-        this(botToken, new OkHttpTelegramClient(botToken), geminiService, recipeService);
+            RecipeService recipeService,
+            UserSessionService userSessionService) {
+        this(botToken, new OkHttpTelegramClient(botToken), geminiService, recipeService, userSessionService);
     }
 
     TelegramBotService(
             String botToken,
             TelegramClient telegramClient,
             GeminiService geminiService,
-            RecipeService recipeService) {
+            RecipeService recipeService,
+            UserSessionService userSessionService) {
         this.botToken = botToken;
         this.telegramClient = telegramClient;
         this.geminiService = geminiService;
         this.recipeService = recipeService;
+        this.userSessionService = userSessionService;
     }
 
     @Override
@@ -99,8 +103,18 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
                 case "/buscar", "/pesquisar" -> handleSearchCommand(chatId, args);
                 case "/atualizar", "/editar" -> handleUpdateCommand(chatId, args);
                 case "/deletar", "/apagar", "/excluir", "/remover" -> handleDeleteCommand(chatId, args);
+                case "/cancelar", "/cancel" -> handleCancelCommand(chatId);
                 default -> sendTextMessage(chatId, "❓ Comando não reconhecido. Digite `/ajuda` para ver os comandos disponíveis.");
             }
+            return;
+        }
+
+        // Verifica se o usuário está em uma sessão de edição ativa
+        Optional<UserSessionService.UserSession> activeSession = userSessionService.getSession(chatId);
+        if (activeSession.isPresent() && activeSession.get().state() == UserSessionService.SessionState.AWAITING_RECIPE_UPDATE) {
+            Long targetRecipeId = activeSession.get().targetRecipeId();
+            userSessionService.clearSession(chatId);
+            applyRecipeUpdate(chatId, targetRecipeId, text);
             return;
         }
 
@@ -226,35 +240,59 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         sendTextMessage(chatId, sb.toString());
     }
 
-    private void handleUpdateCommand(Long chatId, String args) {
+    private void handleCancelCommand(Long chatId) {
+        if (userSessionService.getSession(chatId).isPresent()) {
+            userSessionService.clearSession(chatId);
+            sendTextMessage(chatId, "❌ Edição cancelada.");
+        } else {
+            sendTextMessage(chatId, "ℹ️ Nenhuma operação pendente para cancelar.");
+        }
+    }
+
+    void handleUpdateCommand(Long chatId, String args) {
         if (args.isBlank()) {
             sendTextMessage(chatId, """
                 ✏️ *Como atualizar uma receita:*
 
-                Digite: `/atualizar <ID> <o que deseja alterar>`
+                Você pode atualizar de duas formas fáceis:
+                • *Em 2 passos:* Digite `/atualizar <ID>` e depois envie as alterações na próxima mensagem.
+                • *Em 1 passo:* Digite `/atualizar <ID> <alteração>`
+                • *Por Nome:* Digite `/atualizar bolo trocar açúcar por adoçante`
 
                 *Exemplos de uso:*
+                • `/atualizar 1` (entra no modo interativo)
                 • `/atualizar 1 Mudar o autor para Minha Mãe`
-                • `/atualizar 1 Trocar 2 xícaras de açúcar por 1 xícara de adoçante culinário`
-                • `/atualizar 1 Mudar o título para Bolo de Cenoura Especial`
                 • `/atualizar 1 O tempo de preparo é de 40 minutos`
-                • `/atualizar 1 Acrescentar 1 pitada de sal nos ingredientes`
 
-                💡 Use `/receitas` para ver o número de ID de cada receita salva.
+                💡 Use `/receitas` para consultar o número de ID das suas receitas salvas.
                 """);
             return;
         }
 
         String[] parts = args.split("\\s+", 2);
-        String idStr = parts[0].replace("#", "").trim();
+        String firstToken = parts[0].replace("#", "").trim();
         String instructions = parts.length > 1 ? parts[1].trim() : "";
 
-        Long recipeId;
-        try {
-            recipeId = Long.parseLong(idStr);
-        } catch (NumberFormatException e) {
-            sendTextMessage(chatId, "❌ ID inválido. Use um número (ex: `/atualizar 1 ...`).");
-            return;
+        Long recipeId = null;
+        if (firstToken.matches("^\\d+$")) {
+            recipeId = Long.parseLong(firstToken);
+        } else {
+            // Tentar localizar a receita pelo nome
+            List<Recipe> matches = recipeService.searchRecipes(chatId, firstToken);
+            if (matches.isEmpty()) {
+                sendTextMessage(chatId, "❌ Nenhuma receita encontrada com o termo \"" + firstToken + "\". Use `/receitas` para consultar seus IDs.");
+                return;
+            } else if (matches.size() == 1) {
+                recipeId = matches.get(0).getId();
+            } else {
+                StringBuilder sb = new StringBuilder("🔍 Encontrei mais de uma receita. Por favor, especifique o ID correspondente:\n\n");
+                for (Recipe r : matches) {
+                    sb.append(recipeService.formatRecipeSummary(r)).append("\n");
+                }
+                sb.append("\nExemplo: `/atualizar ").append(matches.get(0).getId()).append(" ").append(instructions).append("`");
+                sendTextMessage(chatId, sb.toString());
+                return;
+            }
         }
 
         Optional<Recipe> optionalRecipe = recipeService.findRecipeByUserAndId(chatId, recipeId);
@@ -266,13 +304,25 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         Recipe existingRecipe = optionalRecipe.get();
 
         if (instructions.isBlank()) {
-            sendTextMessage(chatId, "📖 *Receita encontrada:*\n\n" + 
-                recipeService.formatRecipeForTelegram(existingRecipe) +
-                "\n✏️ *Para atualizá-la, envie:* `/atualizar " + recipeId + " <o que deseja alterar>`");
+            userSessionService.startUpdateSession(chatId, recipeId);
+            sendTextMessage(chatId, "✏️ *Modo de edição ativado para:* *" + existingRecipe.getTitle() + "* `(#" + recipeId + ")`\n\n" +
+                "Envie agora uma mensagem dizendo o que deseja alterar (ex: 'mudar o autor para Vovó' ou 'trocar açúcar por adoçante').\n\n" +
+                "💡 Para cancelar a qualquer momento, digite `/cancelar`.");
             return;
         }
 
-        sendTextMessage(chatId, "🔄 Atualizando a receita *" + existingRecipe.getTitle() + "* com suas alterações...");
+        applyRecipeUpdate(chatId, recipeId, instructions);
+    }
+
+    void applyRecipeUpdate(Long chatId, Long recipeId, String instructions) {
+        Optional<Recipe> optionalRecipe = recipeService.findRecipeByUserAndId(chatId, recipeId);
+        if (optionalRecipe.isEmpty()) {
+            sendTextMessage(chatId, "❌ Receita com ID #" + recipeId + " não foi encontrada no seu caderno.");
+            return;
+        }
+
+        Recipe existingRecipe = optionalRecipe.get();
+        sendTextMessage(chatId, "🔄 Atualizando a receita *" + existingRecipe.getTitle() + "*...");
 
         try {
             RecipeResponseDTO updatedDTO = geminiService.updateRecipe(existingRecipe, instructions);

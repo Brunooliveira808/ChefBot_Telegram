@@ -30,7 +30,7 @@ class TelegramBotServiceSearchUXTest {
         geminiService = Mockito.mock(GeminiService.class);
         recipeService = Mockito.mock(RecipeService.class);
 
-        botService = new TelegramBotService("test-token", telegramClient, geminiService, recipeService);
+        botService = new TelegramBotService("test-token", telegramClient, geminiService, recipeService, new UserSessionService());
     }
 
     private Recipe createRecipe(Long id, String title) {
