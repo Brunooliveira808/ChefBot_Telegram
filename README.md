@@ -2,7 +2,7 @@
 
 > **Caderno Inteligente de Receitas no Telegram potencializado por Inteligência Artificial Multimodal (Google Gemini).**
 
-![Status](https://img.shields.io/badge/Status-Em%20Construção%20%2F%20Under%20Development-yellow?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Funcional%20%26%20Testado-brightgreen?style=for-the-badge)
 ![Java](https://img.shields.io/badge/Java-21%2B%20%2F%2025-orange?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.x-brightgreen?style=for-the-badge&logo=springboot)
 ![Telegram](https://img.shields.io/badge/Telegram%20Bot%20API-7.x-blue?style=for-the-badge&logo=telegram)
@@ -12,96 +12,168 @@
 
 ## 📌 Sobre o Projeto
 
-O **ChefBot** é um assistente virtual para o Telegram projetado para simplificar a captura, organização e consulta de receitas culinárias. 
+O **ChefBot** é um assistente virtual para o Telegram projetado para simplificar a captura, organização, busca e edição de receitas culinárias. 
 
-Em vez de exigir formulários rígidos, o usuário pode simplesmente **gravar um áudio** explicando como fazer o prato (ou gravar alguém da família ensinando) ou **escrever em linguagem natural e informal**. A IA analisa o conteúdo, extrai os ingredientes, medidas, passos de preparo, tempo e rendimento, salvando tudo de forma estruturada.
+Em vez de exigir preenchimento de formulários manuais ou comandos rígidos, o usuário pode simplesmente **gravar uma nota de voz**, enviar um **arquivo de áudio** (`.mp3`, `.ogg`) ou **digitar livremente em linguagem natural**. O bot processa o conteúdo com modelos de IA do Google Gemini, extrai o título com fidelidade, categoriza os ingredientes com suas respectivas medidas, enumera os passos de preparo, estima tempos e porções, e salva tudo estruturado em um banco de dados local.
 
 ---
 
-## 🚀 Funcionalidades Atuais
+## 🚀 Principais Funcionalidades
 
-- 🎙️ **Processamento Multimodal de Áudio:** O usuário envia um áudio/mensagem de voz no Telegram e o modelo Gemini ouve, transcreve e estrutura a receita em um único passo.
-- ✍️ **Extração de Texto Livre:** Receba textos informais ou mensagens desorganizadas e converta-os em fichas técnicas padronizadas.
-- 🛡️ **Validação Inteligente:** O bot reconhece conversas comuns, saudações ou piadas e só cadastra o que for de fato uma receita culinária.
-- 🏷️ **Fidelidade de Título:** O título dado pelo usuário é preservado com exatidão sem alterações arbitrárias pela IA.
-- 📚 **Listagem (`/receitas`):** Visualização de todo o caderno de receitas do usuário com seus respectivos IDs.
-- 🔍 **Busca Flexível (`/buscar <termo>`):**
-  - Busca por ID numérico (`/buscar 1`).
-  - Busca normalizada (insensível a acentos e maiúsculas) por título, ingrediente, autor ou categoria.
-- ✏️ **Atualização com IA (`/atualizar <ID> <alteração>`):** Edição em linguagem natural (ex: *"/atualizar 1 Troque o açúcar por 1 xícara de adoçante"*).
-- 🗑️ **Exclusão de Receitas (`/deletar <ID>`):** Exclusão em cascata de receitas do banco de dados.
+- 🎙️ **Processamento Multimodal de Áudio & Voz:** Envie notas de voz gravadas no microfone do Telegram ou arquivos de áudio encaminhados. A IA transcreve, interpreta e estrutura a receita automaticamente.
+- ✍️ **Extração de Texto Livre:** Envie mensagens informais ou listas soltas e receba de volta a ficha técnica padronizada.
+- 🛡️ **Validação de Contexto Culinário:** O bot distingue conversas casuais e saudações ("Oi", "Bom dia", "Tudo bem?") de receitas reais, evitando cadastros indevidos.
+- 🔍 **Motor de Busca Inteligente por Relevância (`/buscar <termo>`):**
+  - Busca normalizada (insensível a acentos, maiúsculas e plurais).
+  - Remoção automática de stopwords em português (*de, com, em, para, do, da*).
+  - Varredura em **títulos**, **ingredientes** e **modo de preparo** (ex: buscar *"airfryer"*, *"chocolate"* ou *"forno"*).
+  - Apresentação em lista compacta de mensagem única (sem spam de mensagens) e busca direta por ID (`/buscar 1`).
+- ✏️ **Atualização Inteligente de Receitas (`/atualizar`):**
+  - **Fluxo em 2 passos (Conversacional):** Envie `/atualizar 1` e o bot entrará em modo de edição, aguardando suas instruções na mensagem seguinte.
+  - **Comando direto:** Envie `/atualizar 1 troque o açúcar por mel` ou `/atualizar bolo trocar manteiga por óleo`.
+  - **Fast-Path Instantâneo:** Edições pontuais de campos escalares (autor, título, porções, tempo) são aplicadas na hora, sem latência externa.
+  - **Garantia de Imutabilidade:** Ingredientes e passos que não foram pedidos para mudar são rigorosamente preservados.
+- 💬 **Formatação Segura em HTML:** Mensagens enviadas em HTML padronizado com escape de caracteres especiais (`&`, `<`, `>`) e fallback resiliente em texto puro.
+- 📚 **Gestão Completa do Caderno:** Comandos `/receitas` (listar todas), `/deletar <ID>` (remover) e `/cancelar` (abortar edições pendentes).
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Linguagem:** Java 25 / 21
-- **Framework:** Spring Boot
-- **Cliente HTTP:** Spring `RestClient` moderno
-- **Persistência Relacional:** Spring Data JPA / Hibernate
-- **Banco de Dados Atual:** H2 Database (arquivo local) / Suporte a PostgreSQL
-- **Integração Telegram:** `telegrambots-springboot-longpolling-starter`
-- **Inteligência Artificial:** Google Gemini API (modelos `gemini-flash` com fallback de resiliência)
-- **Serialização/JSON:** Jackson com módulos de deserialização resiliente
+- **Linguagem:** Java 25 (compatível com Java 21+)
+- **Framework:** Spring Boot 4.x
+- **Persistência Relacional:** Spring Data JPA / Hibernate (com `saveAndFlush` e integridade referencial)
+- **Banco de Dados:** H2 Database (arquivo local persistido em `./data/chefbotdb.mv.db`)
+- **Integração Telegram:** `telegrambots-springboot-longpolling-starter` (Long Polling resiliente)
+- **Inteligência Artificial:** Google Gemini Generative Language API (com fallback dinâmico entre `gemini-3.1-flash-lite`, `gemini-flash-lite-latest` e `gemini-3.5-flash`)
+- **Cliente HTTP:** Spring `RestClient` com timeouts de rede configurados
 
 ---
 
-## 🗺️ Estado Atual & Próximos Passos (Roadmap)
+## 💻 Como Iniciar e Testar o Projeto
 
-> [!NOTE]
-> O projeto encontra-se atualmente em **fase ativa de construção e prototipagem**. A arquitetura inicial com banco de dados relacional (JPA/H2) serviu como validação do fluxo funcional.
-
-### 🎯 Próximos Passos:
-
-1. 🍃 **Migração para NoSQL Document Database (MongoDB / DocumentDB):**
-   - Transição da camada de persistência para um banco orientado a documentos (NoSQL).
-   - *Motivo:* Receitas culinárias são entidades altamente variáveis (variações de ingredientes, substituições, passos opcionais, campos dinâmicos). O modelo de documentos NoSQL confere escalabilidade, flexibilidade de esquema e consultas ricas por estruturas aninhadas sem a sobrecarga de tabelas relacionais intermediárias.
-2. 📸 **Reconhecimento Visual de Receitas (OCR e Visão):**
-   - Suporte ao envio de fotos de cadernos de receitas manuscritos ou fotos de pratos para extração automática via visão computacional do Gemini.
-3. 🥗 **Informações Nutricionais e Filtros Dietéticos:**
-   - Cálculo automático de calorias estimadas e tags automáticas (ex: *Vegano*, *Sem Glúten*, *Low Carb*, *Rápido*).
-4. 📤 **Exportação e Compartilhamento:**
-   - Geração de cartões de receita em PDF ou imagens estilizadas para compartilhamento.
-5. 🌐 **Dashboard Web Administrativo:**
-   - Interface Web (Spring MVC / React) para visualizar e gerenciar o caderno de receitas no navegador.
+### 📋 Pré-requisitos
+- **Java JDK 21 ou 25** instalado.
+- **Git** instalado.
 
 ---
 
-## 💻 Como Executar o Projeto Localmente
+### 1. Clonar o Repositório
+```bash
+git clone https://github.com/Brunooliveira808/ChefBot_Telegram.git
+cd ChefBot_Telegram
+```
 
-### Pré-requisitos
-- JDK 21 ou superior
-- Gradle 8+
-- Token de Bot do Telegram (criado via [@BotFather](https://t.me/BotFather))
-- Chave de API do Google AI Studio ([Google Gemini](https://aistudio.google.com/))
+---
 
-### Configuração
-Crie ou configure o arquivo `src/main/resources/application.properties`:
+### 2. Configurar as Chaves e Credenciais
+
+O projeto já inclui um arquivo de modelo em `ChefBot_Telegram/src/main/resources/application.properties.example`.
+
+Crie a sua cópia local em `ChefBot_Telegram/src/main/resources/application.properties`:
+```bash
+cp ChefBot_Telegram/src/main/resources/application.properties.example ChefBot_Telegram/src/main/resources/application.properties
+```
+
+Abra o arquivo recém-criado e preencha com suas credenciais:
 
 ```properties
 spring.application.name=ChefBot_Telegram
 
-# Telegram Bot
-telegram.bot.token=SEU_TELEGRAM_BOT_TOKEN
-telegram.bot.username=SEU_TELEGRAM_BOT_USERNAME
+# 1. Telegram Bot (Obtenha com o @BotFather no Telegram)
+telegram.bot.token=SEU_TOKEN_DO_TELEGRAM_AQUI
+telegram.bot.username=NOME_DO_SEU_BOT_AQUI
 
-# Google Gemini API
-gemini.api.key=SUA_GEMINI_API_KEY
+# 2. Google Gemini API Key (Obtenha em: https://aistudio.google.com/app/apikey)
+gemini.api.key=SUA_CHAVE_GEMINI_AQUI
+gemini.model.primary=gemini-3.1-flash-lite
 
-# Banco de dados local H2
+# 3. Banco de Dados Local (Criado automaticamente na pasta ./data)
 spring.datasource.url=jdbc:h2:file:./data/chefbotdb;AUTO_SERVER=TRUE
 spring.datasource.driverClassName=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
 spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
 ```
 
-### Execução
-Pelo terminal na raiz do projeto:
+> [!IMPORTANT]
+> O arquivo `application.properties` está registrado no `.gitignore`. Suas chaves privadas e tokens **nunca serão enviados ao repositório Git**.
 
+---
+
+### 3. Como Obter as Chaves Necessárias
+
+#### 🤖 Token do Telegram:
+1. Abra o Telegram e inicie uma conversa com o usuário oficial **`@BotFather`**.
+2. Digite `/newbot` e siga as instruções para escolher o nome e o username do bot (deve terminar com `bot`, ex: `MeuChef_bot`).
+3. O BotFather responderá com o seu token de API (formato `1234567890:ABCdef...`).
+
+#### 🧠 API Key do Google Gemini:
+1. Acesse o **[Google AI Studio](https://aistudio.google.com/app/apikey)** com a sua conta Google.
+2. Clique em **"Create API key"** e selecione ou crie um projeto padrão.
+3. Copie a chave gerada (inicia com `AIzaSy...` ou `AQ...`).
+
+---
+
+### 4. Executar os Testes Automatizados
+
+A suíte de testes unitários e de integração utiliza banco de dados em memória e mocks, permitindo validação completa sem depender de chaves reais ou conexão externa:
+
+```bash
+cd ChefBot_Telegram
+./gradlew test
+```
+
+Para reexecutar todos os testes garantindo que não há cache:
+```bash
+./gradlew test --rerun
+```
+
+Todos os testes devem finalizar com **`BUILD SUCCESSFUL`**.
+
+---
+
+### 5. Executar o Bot Localmente
+
+A partir da pasta `ChefBot_Telegram`:
 ```bash
 ./gradlew bootRun
 ```
 
-Ou execute a classe principal [`Application.java`](file:///home/bruno/workspace/ChefBot_Telegram/src/main/java/ChefBot_Telegram/Application.java) pela sua IDE de preferência (Eclipse, IntelliJ IDEA, VS Code).
+Assim que a aplicação inicializar:
+1. Abra o Telegram e procure pelo seu bot pelo username cadastrado.
+2. Envie o comando `/start`.
+3. Pronto! O bot responderá com o menu de boas-vindas e estará pronto para receber receitas.
+
+---
+
+## 📱 Guia de Comandos no Telegram
+
+| Comando | Descrição | Exemplo de Uso |
+| :--- | :--- | :--- |
+| `/start` ou `/ajuda` | Exibe o guia de introdução e lista de comandos. | `/ajuda` |
+| `/receitas` | Lista todas as receitas cadastradas do usuário. | `/receitas` |
+| `/buscar <termo>` | Pesquisa por nome, ingrediente, método ou ID. | `/buscar bolo`, `/buscar airfryer`, `/buscar 1` |
+| `/atualizar <ID>` | Inicia o modo interativo de edição em 2 passos. | `/atualizar 1` |
+| `/atualizar <ID> <alteração>` | Aplica uma alteração diretamente na receita. | `/atualizar 1 Mudar autor para Tia Maria` |
+| `/deletar <ID>` | Exclui permanentemente uma receita do seu caderno. | `/deletar 1` |
+| `/cancelar` | Cancela uma sessão de edição interativa ativa. | `/cancelar` |
+
+---
+
+## 📂 Estrutura das Tarefas Realizadas
+
+O desenvolvimento e aprimoramento contínuo deste projeto foram documentados em especificações modulares na pasta [`tasks/`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks):
+
+- [`TASK_00`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_00_CONFIGURACAO_E_AMBIENTE_DE_TESTES.md): Configuração de ambiente e isolamento da suíte de testes.
+- [`TASK_01`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_01_CORRECAO_MODELOS_E_CLIENTE_GEMINI.md): Suporte a modelos ativos do Gemini e timeouts no cliente HTTP.
+- [`TASK_02`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_02_MOTOR_DE_BUSCA_NORMALIZACAO_E_TOKENIZACAO.md): Motor de busca por relevância com tokenização, lematização e stopwords.
+- [`TASK_03`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_03_UX_E_APRESENTACAO_DE_BUSCA_TELEGRAM.md): UX no Telegram, eliminação de spam e interpretação de linguagem natural.
+- [`TASK_04`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_04_PERSISTENCIA_E_INTEGRIDADE_ATUALIZACAO_JPA.md): Persistência JPA com integridade de coleções e `saveAndFlush`.
+- [`TASK_05`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_05_LOGICA_DE_ATUALIZACAO_COM_IA_E_PROMPT.md): Prompt blindado para imutabilidade e fast-path determinístico.
+- [`TASK_06`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_06_FLUXO_CONVERSACIONAL_E_ESTADO_DE_EDICAO.md): Máquina de estados para edição em 2 passos e resolução de receitas por nome.
+- [`TASK_07`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_07_ROBUSTEZ_TELEGRAM_FORMATACAO_E_MIDIA.md): Sanitização HTML e recepção de arquivos de áudio externos.
 
 ---
 
