@@ -30,11 +30,11 @@ public class GeminiService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    // Modelos estáveis e rápidos para uso com fallback
+    // Modelos oficiais do Google AI Studio com fallback de alta disponibilidade
     private static final List<String> MODELS = List.of(
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash"
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
     );
 
     private static final String SYSTEM_PROMPT = """
@@ -244,14 +244,7 @@ public class GeminiService {
         throw new RuntimeException("Não foi possível processar com a IA no momento. Tente novamente.", lastException);
     }
 
-    private RecipeResponseDTO executeApiCall(String url, Map<String, Object> payload) throws Exception {
-        String responseBody = restClient.post()
-            .uri(url)
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(payload)
-            .retrieve()
-            .body(String.class);
-
+    RecipeResponseDTO parseGeminiResponse(String responseBody) throws Exception {
         JsonNode root = objectMapper.readTree(responseBody);
         JsonNode candidates = root.path("candidates");
         if (candidates.isEmpty()) {
@@ -271,20 +264,36 @@ public class GeminiService {
             throw new RuntimeException("Nenhum texto JSON foi encontrado na resposta do Gemini.");
         }
 
+        String cleanedJson = cleanJsonContent(jsonContent);
+        log.info("JSON estruturado pela IA com sucesso: {}", cleanedJson);
+
+        return objectMapper.readValue(cleanedJson, RecipeResponseDTO.class);
+    }
+
+    static String cleanJsonContent(String jsonContent) {
+        if (jsonContent == null) return "";
+        String cleaned = jsonContent.trim();
         // Limpeza de possíveis marcadores markdown ```json ... ```
-        if (jsonContent.startsWith("```json")) {
-            jsonContent = jsonContent.substring(7);
-        } else if (jsonContent.startsWith("```")) {
-            jsonContent = jsonContent.substring(3);
+        if (cleaned.startsWith("```json")) {
+            cleaned = cleaned.substring(7);
+        } else if (cleaned.startsWith("```")) {
+            cleaned = cleaned.substring(3);
         }
-        if (jsonContent.endsWith("```")) {
-            jsonContent = jsonContent.substring(0, jsonContent.length() - 3);
+        if (cleaned.endsWith("```")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 3);
         }
-        jsonContent = jsonContent.trim();
+        return cleaned.trim();
+    }
 
-        log.info("JSON estruturado pela IA com sucesso: {}", jsonContent);
+    private RecipeResponseDTO executeApiCall(String url, Map<String, Object> payload) throws Exception {
+        String responseBody = restClient.post()
+            .uri(url)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(payload)
+            .retrieve()
+            .body(String.class);
 
-        return objectMapper.readValue(jsonContent, RecipeResponseDTO.class);
+        return parseGeminiResponse(responseBody);
     }
 }
 
