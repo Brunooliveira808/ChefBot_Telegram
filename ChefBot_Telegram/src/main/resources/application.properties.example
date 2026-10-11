@@ -6,7 +6,7 @@ telegram.bot.username=SEU_TELEGRAM_BOT_USERNAME
 
 # Google Gemini API Key (obtenha no Google AI Studio)
 gemini.api.key=SUA_GEMINI_API_KEY
-gemini.model.primary=gemini-2.5-flash
+gemini.model.primary=gemini-3.1-flash-lite
 
 # Banco de dados local H2 (arquivo)
 spring.datasource.url=jdbc:h2:file:./data/chefbotdb;AUTO_SERVER=TRUE

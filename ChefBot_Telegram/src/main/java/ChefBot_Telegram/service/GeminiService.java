@@ -31,11 +31,14 @@ public class GeminiService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    // Modelos oficiais do Google AI Studio com fallback de alta disponibilidade
-    private static final List<String> MODELS = List.of(
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash"
+    @Value("${gemini.model.primary:gemini-3.1-flash-lite}")
+    private String primaryModel;
+
+    // Modelos ativos suportados pela API Generative Language do Google
+    private static final List<String> FALLBACK_MODELS = List.of(
+        "gemini-3.1-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash"
     );
 
     private static final String SYSTEM_PROMPT = """
@@ -306,7 +309,17 @@ public class GeminiService {
     private RecipeResponseDTO callGeminiWithFallback(Map<String, Object> payload) {
         Exception lastException = null;
 
-        for (String model : MODELS) {
+        List<String> modelsToTry = new java.util.ArrayList<>();
+        if (primaryModel != null && !primaryModel.isBlank()) {
+            modelsToTry.add(primaryModel.trim());
+        }
+        for (String m : FALLBACK_MODELS) {
+            if (!modelsToTry.contains(m)) {
+                modelsToTry.add(m);
+            }
+        }
+
+        for (String model : modelsToTry) {
             String url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
             try {
                 log.info("Tentando chamar modelo Gemini: {}", model);
