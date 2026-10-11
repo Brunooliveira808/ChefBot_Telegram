@@ -9,6 +9,7 @@ import ChefBot_Telegram.model.Recipe;
 import ChefBot_Telegram.model.User;
 import ChefBot_Telegram.repository.RecipeRepository;
 import ChefBot_Telegram.repository.UserRepository;
+import ChefBot_Telegram.util.TelegramHtmlUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -309,54 +310,56 @@ public class RecipeService {
     }
 
     /**
-     * Formata uma entidade Recipe em texto Markdown amigável para envio no chat do Telegram.
+     * Formata uma entidade Recipe em texto HTML seguro para envio no chat do Telegram.
      */
     public String formatRecipeForTelegram(Recipe recipe) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("🍽️ *").append(recipe.getTitle()).append("* `(ID: #").append(recipe.getId()).append(")`\n\n");
+        sb.append("🍽️ <b>").append(TelegramHtmlUtil.escapeHtml(recipe.getTitle()))
+          .append("</b> <code>(ID: #").append(recipe.getId()).append(")</code>\n\n");
 
         if (recipe.getSourceAuthor() != null && !recipe.getSourceAuthor().isBlank()) {
-            sb.append("👤 *Ensinado por:* ").append(recipe.getSourceAuthor()).append("\n");
+            sb.append("👤 <b>Ensinado por:</b> ").append(TelegramHtmlUtil.escapeHtml(recipe.getSourceAuthor())).append("\n");
         }
         if (recipe.getCategory() != null && !recipe.getCategory().isBlank()) {
-            sb.append("📂 *Categoria:* ").append(recipe.getCategory()).append("\n");
+            sb.append("📂 <b>Categoria:</b> ").append(TelegramHtmlUtil.escapeHtml(recipe.getCategory())).append("\n");
         }
         if (recipe.getPrepTimeMinutes() != null) {
-            sb.append("⏱️ *Tempo:* ").append(recipe.getPrepTimeMinutes()).append(" min");
+            sb.append("⏱️ <b>Tempo:</b> ").append(recipe.getPrepTimeMinutes()).append(" min");
         }
         if (recipe.getPortions() != null) {
-            sb.append(" | 👥 *Rendimento:* ").append(recipe.getPortions()).append(" porções");
+            sb.append(" | 👥 <b>Rendimento:</b> ").append(recipe.getPortions()).append(" porções");
         }
         sb.append("\n\n");
 
-        sb.append("🛒 *Ingredientes:*\n");
+        sb.append("🛒 <b>Ingredientes:</b>\n");
         if (recipe.getIngredients().isEmpty()) {
             sb.append("• Nenhum ingrediente especificado.\n");
         } else {
             for (Ingredient ing : recipe.getIngredients()) {
                 sb.append("• ");
                 if (ing.getQuantity() != null && !ing.getQuantity().isBlank()) {
-                    sb.append(ing.getQuantity()).append(" ");
+                    sb.append(TelegramHtmlUtil.escapeHtml(ing.getQuantity())).append(" ");
                 }
                 if (ing.getUnit() != null && !ing.getUnit().isBlank()) {
-                    sb.append(ing.getUnit()).append(" de ");
+                    sb.append(TelegramHtmlUtil.escapeHtml(ing.getUnit())).append(" de ");
                 }
-                sb.append(ing.getName());
+                sb.append(TelegramHtmlUtil.escapeHtml(ing.getName()));
                 if (ing.getNotes() != null && !ing.getNotes().isBlank()) {
-                    sb.append(" (").append(ing.getNotes()).append(")");
+                    sb.append(" (").append(TelegramHtmlUtil.escapeHtml(ing.getNotes())).append(")");
                 }
                 sb.append("\n");
             }
         }
         sb.append("\n");
 
-        sb.append("👩‍🍳 *Modo de Preparo:*\n");
+        sb.append("👩‍🍳 <b>Modo de Preparo:</b>\n");
         if (recipe.getInstructions().isEmpty()) {
             sb.append("1. Nenhum passo especificado.\n");
         } else {
             for (Instruction inst : recipe.getInstructions()) {
-                sb.append(inst.getStepNumber()).append(". ").append(inst.getInstructionText()).append("\n");
+                sb.append(inst.getStepNumber()).append(". ")
+                  .append(TelegramHtmlUtil.escapeHtml(inst.getInstructionText())).append("\n");
             }
         }
 
@@ -364,13 +367,14 @@ public class RecipeService {
     }
 
     /**
-     * Formata um resumo compacto de uma linha da receita para listagens e resultados múltiplos.
+     * Formata um resumo compacto de uma linha da receita para listagens e resultados múltiplos em HTML seguro.
      */
     public String formatRecipeSummary(Recipe recipe) {
         StringBuilder sb = new StringBuilder();
-        sb.append("• `[#").append(recipe.getId()).append("]` *").append(recipe.getTitle()).append("*");
+        sb.append("• <code>[#").append(recipe.getId()).append("]</code> <b>")
+          .append(TelegramHtmlUtil.escapeHtml(recipe.getTitle())).append("</b>");
         if (recipe.getCategory() != null && !recipe.getCategory().isBlank()) {
-            sb.append(" _(").append(recipe.getCategory()).append(")_");
+            sb.append(" <i>(").append(TelegramHtmlUtil.escapeHtml(recipe.getCategory())).append(")</i>");
         }
         if (recipe.getPrepTimeMinutes() != null) {
             sb.append(" ⏱️ ").append(recipe.getPrepTimeMinutes()).append("m");

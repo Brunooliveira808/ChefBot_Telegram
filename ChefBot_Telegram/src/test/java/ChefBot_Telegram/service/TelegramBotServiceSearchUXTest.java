@@ -49,9 +49,10 @@ class TelegramBotServiceSearchUXTest {
         verify(telegramClient, times(1)).execute(captor.capture());
 
         SendMessage sent = captor.getValue();
+        assertEquals("HTML", sent.getParseMode());
         assertTrue(sent.getText().contains("Como buscar no seu caderno"));
-        assertTrue(sent.getText().contains("• *Por Nome:*"));
-        assertTrue(sent.getText().contains("• *Por Ingrediente:*"));
+        assertTrue(sent.getText().contains("• <b>Por Nome:</b>"));
+        assertTrue(sent.getText().contains("• <b>Por Ingrediente:</b>"));
     }
 
     @Test
@@ -61,8 +62,8 @@ class TelegramBotServiceSearchUXTest {
         Recipe r2 = createRecipe(2L, "Bolo de Fubá");
 
         when(recipeService.searchRecipes(CHAT_ID, "bolo")).thenReturn(List.of(r1, r2));
-        when(recipeService.formatRecipeSummary(r1)).thenReturn("• `[#1]` *Bolo de Cenoura*");
-        when(recipeService.formatRecipeSummary(r2)).thenReturn("• `[#2]` *Bolo de Fubá*");
+        when(recipeService.formatRecipeSummary(r1)).thenReturn("• <code>[#1]</code> <b>Bolo de Cenoura</b>");
+        when(recipeService.formatRecipeSummary(r2)).thenReturn("• <code>[#2]</code> <b>Bolo de Fubá</b>");
 
         botService.handleSearchCommand(CHAT_ID, "bolo");
 
@@ -71,10 +72,11 @@ class TelegramBotServiceSearchUXTest {
         verify(telegramClient, times(1)).execute(captor.capture());
 
         SendMessage sent = captor.getValue();
+        assertEquals("HTML", sent.getParseMode());
         assertTrue(sent.getText().contains("Encontrei 2 receitas para \"bolo\":"));
         assertTrue(sent.getText().contains("[#1]"));
         assertTrue(sent.getText().contains("[#2]"));
-        assertTrue(sent.getText().contains("/buscar <ID>"));
+        assertTrue(sent.getText().contains("/buscar &lt;ID&gt;"));
     }
 
     @Test

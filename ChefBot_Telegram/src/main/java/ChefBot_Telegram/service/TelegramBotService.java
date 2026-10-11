@@ -2,6 +2,7 @@ package ChefBot_Telegram.service;
 
 import ChefBot_Telegram.dto.RecipeResponseDTO;
 import ChefBot_Telegram.model.Recipe;
+import ChefBot_Telegram.util.TelegramHtmlUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,11 +77,16 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         String userName = message.getFrom() != null ? message.getFrom().getFirstName() : "Usuário";
 
         try {
-            // 1. Tratamento de Mensagem de ÁUDIO / VOZ
+            // 1. Tratamento de Mensagem de VOZ (Microfone do Telegram)
             if (message.hasVoice()) {
-                handleVoiceMessage(chatId, userName, message.getVoice().getFileId());
+                handleAudioOrVoiceMessage(chatId, userName, message.getVoice().getFileId(), "audio/ogg");
             } 
-            // 2. Tratamento de Mensagem de TEXTO
+            // 2. Tratamento de Mensagem de ÁUDIO (Arquivo MP3, áudio encaminhado, etc)
+            else if (message.hasAudio()) {
+                String mimeType = message.getAudio().getMimeType() != null ? message.getAudio().getMimeType() : "audio/mpeg";
+                handleAudioOrVoiceMessage(chatId, userName, message.getAudio().getFileId(), mimeType);
+            }
+            // 3. Tratamento de Mensagem de TEXTO
             else if (message.hasText()) {
                 handleTextMessage(chatId, userName, message.getText().trim());
             }
@@ -104,7 +110,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
                 case "/atualizar", "/editar" -> handleUpdateCommand(chatId, args);
                 case "/deletar", "/apagar", "/excluir", "/remover" -> handleDeleteCommand(chatId, args);
                 case "/cancelar", "/cancel" -> handleCancelCommand(chatId);
-                default -> sendTextMessage(chatId, "❓ Comando não reconhecido. Digite `/ajuda` para ver os comandos disponíveis.");
+                default -> sendTextMessage(chatId, "❓ Comando não reconhecido. Digite <code>/ajuda</code> para ver os comandos disponíveis.");
             }
             return;
         }
@@ -138,15 +144,15 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
             RecipeResponseDTO dto = geminiService.extractRecipeFromText(text);
 
             if (dto.isRecipe() == null || !dto.isRecipe()) {
-                sendTextMessage(chatId, "🧑‍🍳 Não identifiquei uma receita culinária na sua mensagem.\n\nEnvie uma receita em texto ou áudio (com ingredientes ou modo de preparo), ou use `/ajuda` para ver os comandos.");
+                sendTextMessage(chatId, "🧑‍🍳 Não identifiquei uma receita culinária na sua mensagem.\n\nEnvie uma receita em texto ou áudio (com ingredientes ou modo de preparo), ou use <code>/ajuda</code> para ver os comandos.");
                 return;
             }
 
             Recipe savedRecipe = recipeService.saveRecipeFromDTO(chatId, userName, dto, text);
 
-            String formattedResponse = "✅ *Receita salva com sucesso!*\n\n" + 
+            String formattedResponse = "✅ <b>Receita salva com sucesso!</b>\n\n" + 
                                        recipeService.formatRecipeForTelegram(savedRecipe) +
-                                       "\n💡 *Dica:* Para alterar algum dado no futuro, use `/atualizar " + savedRecipe.getId() + " <o que mudar>`";
+                                       "\n💡 <b>Dica:</b> Para alterar algum dado no futuro, use <code>/atualizar " + savedRecipe.getId() + " &lt;o que mudar&gt;</code>";
             sendTextMessage(chatId, formattedResponse);
         } catch (Exception e) {
             log.error("Falha ao processar receita por texto: {}", e.getMessage(), e);
@@ -154,7 +160,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         }
     }
 
-    private void handleVoiceMessage(Long chatId, String userName, String fileId) {
+    private void handleAudioOrVoiceMessage(Long chatId, String userName, String fileId, String mimeType) {
         sendTextMessage(chatId, "🎧 Ouvindo seu áudio e analisando com IA...");
 
         try {
@@ -166,18 +172,18 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
                 audioBytes = is.readAllBytes();
             }
 
-            RecipeResponseDTO dto = geminiService.extractRecipeFromAudio(audioBytes, "audio/ogg");
+            RecipeResponseDTO dto = geminiService.extractRecipeFromAudio(audioBytes, mimeType);
 
             if (dto.isRecipe() == null || !dto.isRecipe()) {
-                sendTextMessage(chatId, "🧑‍🍳 Não identifiquei uma receita culinária no áudio.\n\nPor favor, grave um áudio explicando a receita (ingredientes ou modo de preparo).");
+                sendTextMessage(chatId, "🧑‍🍳 Não identifiquei uma receita culinária no áudio.\n\nPor favor, grave ou envie um áudio explicando a receita (ingredientes ou modo de preparo).");
                 return;
             }
 
             Recipe savedRecipe = recipeService.saveRecipeFromDTO(chatId, userName, dto, "[Áudio gravado]");
 
-            String formattedResponse = "✅ *Áudio processado e receita salva!*\n\n" + 
+            String formattedResponse = "✅ <b>Áudio processado e receita salva!</b>\n\n" + 
                                        recipeService.formatRecipeForTelegram(savedRecipe) +
-                                       "\n💡 *Dica:* Para alterar algum dado no futuro, use `/atualizar " + savedRecipe.getId() + " <o que mudar>`";
+                                       "\n💡 <b>Dica:</b> Para alterar algum dado no futuro, use <code>/atualizar " + savedRecipe.getId() + " &lt;o que mudar&gt;</code>";
             sendTextMessage(chatId, formattedResponse);
         } catch (Exception e) {
             log.error("Falha ao processar áudio: {}", e.getMessage(), e);
@@ -188,16 +194,16 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
     void handleSearchCommand(Long chatId, String args) {
         if (args.isBlank()) {
             sendTextMessage(chatId, """
-                🔍 *Como buscar no seu caderno:*
+                🔍 <b>Como buscar no seu caderno:</b>
 
                 Você pode pesquisar de várias formas:
-                • *Por Nome:* `/buscar bolo` ou `/buscar torta de limao`
-                • *Por Ingrediente:* `/buscar chocolate` ou `/buscar frango`
-                • *Por Categoria:* `/buscar sobremesa` ou `/buscar almoço`
-                • *Por Modo de Preparo:* `/buscar airfryer` ou `/buscar forno`
-                • *Por ID Direto:* `/buscar 1` (mostra a receita completa)
+                • <b>Por Nome:</b> <code>/buscar bolo</code> ou <code>/buscar torta de limao</code>
+                • <b>Por Ingrediente:</b> <code>/buscar chocolate</code> ou <code>/buscar frango</code>
+                • <b>Por Categoria:</b> <code>/buscar sobremesa</code> ou <code>/buscar almoço</code>
+                • <b>Por Modo de Preparo:</b> <code>/buscar airfryer</code> ou <code>/buscar forno</code>
+                • <b>Por ID Direto:</b> <code>/buscar 1</code> (mostra a receita completa)
 
-                💡 *Dica:* Não se preocupe com acentos ou letras maiúsculas!
+                💡 <b>Dica:</b> Não se preocupe com acentos ou letras maiúsculas!
                 """);
             return;
         }
@@ -206,13 +212,13 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         if (recipes.isEmpty()) {
             List<Recipe> recent = recipeService.findRecipesByChatId(chatId);
             StringBuilder sb = new StringBuilder();
-            sb.append("🔍 *Nenhuma receita encontrada para:* \"").append(args).append("\"\n\n");
-            sb.append("💡 *Dicas para encontrar:*\n");
+            sb.append("🔍 <b>Nenhuma receita encontrada para:</b> \"").append(TelegramHtmlUtil.escapeHtml(args)).append("\"\n\n");
+            sb.append("💡 <b>Dicas para encontrar:</b>\n");
             sb.append("• Tente usar uma única palavra-chave (ex: 'frango' em vez de 'frango desfiado com molho').\n");
-            sb.append("• Use `/receitas` para ver todas as suas receitas cadastradas.\n");
+            sb.append("• Use <code>/receitas</code> para ver todas as suas receitas cadastradas.\n");
 
             if (!recent.isEmpty()) {
-                sb.append("\n📚 *Suas receitas recentes:*\n");
+                sb.append("\n📚 <b>Suas receitas recentes:</b>\n");
                 int limit = Math.min(3, recent.size());
                 for (int i = 0; i < limit; i++) {
                     sb.append(recipeService.formatRecipeSummary(recent.get(i))).append("\n");
@@ -230,13 +236,13 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
 
         // Se houver múltiplos resultados, exibe uma lista compacta em UMA única mensagem
         StringBuilder sb = new StringBuilder();
-        sb.append("🔍 *Encontrei ").append(recipes.size()).append(" receitas para \"").append(args).append("\":*\n\n");
+        sb.append("🔍 <b>Encontrei ").append(recipes.size()).append(" receitas para \"").append(TelegramHtmlUtil.escapeHtml(args)).append("\":</b>\n\n");
 
         for (Recipe r : recipes) {
             sb.append(recipeService.formatRecipeSummary(r)).append("\n");
         }
 
-        sb.append("\n👉 *Para abrir a receita completa, digite:* `/buscar <ID>` (ex: `/buscar ").append(recipes.get(0).getId()).append("`)");
+        sb.append("\n👉 <b>Para abrir a receita completa, digite:</b> <code>/buscar &lt;ID&gt;</code> (ex: <code>/buscar ").append(recipes.get(0).getId()).append("</code>)");
         sendTextMessage(chatId, sb.toString());
     }
 
@@ -252,19 +258,19 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
     void handleUpdateCommand(Long chatId, String args) {
         if (args.isBlank()) {
             sendTextMessage(chatId, """
-                ✏️ *Como atualizar uma receita:*
+                ✏️ <b>Como atualizar uma receita:</b>
 
                 Você pode atualizar de duas formas fáceis:
-                • *Em 2 passos:* Digite `/atualizar <ID>` e depois envie as alterações na próxima mensagem.
-                • *Em 1 passo:* Digite `/atualizar <ID> <alteração>`
-                • *Por Nome:* Digite `/atualizar bolo trocar açúcar por adoçante`
+                • <b>Em 2 passos:</b> Digite <code>/atualizar &lt;ID&gt;</code> e depois envie as alterações na próxima mensagem.
+                • <b>Em 1 passo:</b> Digite <code>/atualizar &lt;ID&gt; &lt;alteração&gt;</code>
+                • <b>Por Nome:</b> Digite <code>/atualizar bolo trocar açúcar por adoçante</code>
 
-                *Exemplos de uso:*
-                • `/atualizar 1` (entra no modo interativo)
-                • `/atualizar 1 Mudar o autor para Minha Mãe`
-                • `/atualizar 1 O tempo de preparo é de 40 minutos`
+                <b>Exemplos de uso:</b>
+                • <code>/atualizar 1</code> (entra no modo interativo)
+                • <code>/atualizar 1 Mudar o autor para Minha Mãe</code>
+                • <code>/atualizar 1 O tempo de preparo é de 40 minutos</code>
 
-                💡 Use `/receitas` para consultar o número de ID das suas receitas salvas.
+                💡 Use <code>/receitas</code> para consultar o número de ID das suas receitas salvas.
                 """);
             return;
         }
@@ -280,7 +286,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
             // Tentar localizar a receita pelo nome
             List<Recipe> matches = recipeService.searchRecipes(chatId, firstToken);
             if (matches.isEmpty()) {
-                sendTextMessage(chatId, "❌ Nenhuma receita encontrada com o termo \"" + firstToken + "\". Use `/receitas` para consultar seus IDs.");
+                sendTextMessage(chatId, "❌ Nenhuma receita encontrada com o termo \"" + TelegramHtmlUtil.escapeHtml(firstToken) + "\". Use <code>/receitas</code> para consultar seus IDs.");
                 return;
             } else if (matches.size() == 1) {
                 recipeId = matches.get(0).getId();
@@ -289,7 +295,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
                 for (Recipe r : matches) {
                     sb.append(recipeService.formatRecipeSummary(r)).append("\n");
                 }
-                sb.append("\nExemplo: `/atualizar ").append(matches.get(0).getId()).append(" ").append(instructions).append("`");
+                sb.append("\nExemplo: <code>/atualizar ").append(matches.get(0).getId()).append(" ").append(TelegramHtmlUtil.escapeHtml(instructions)).append("</code>");
                 sendTextMessage(chatId, sb.toString());
                 return;
             }
@@ -305,9 +311,9 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
 
         if (instructions.isBlank()) {
             userSessionService.startUpdateSession(chatId, recipeId);
-            sendTextMessage(chatId, "✏️ *Modo de edição ativado para:* *" + existingRecipe.getTitle() + "* `(#" + recipeId + ")`\n\n" +
+            sendTextMessage(chatId, "✏️ <b>Modo de edição ativado para:</b> <b>" + TelegramHtmlUtil.escapeHtml(existingRecipe.getTitle()) + "</b> <code>(#" + recipeId + ")</code>\n\n" +
                 "Envie agora uma mensagem dizendo o que deseja alterar (ex: 'mudar o autor para Vovó' ou 'trocar açúcar por adoçante').\n\n" +
-                "💡 Para cancelar a qualquer momento, digite `/cancelar`.");
+                "💡 Para cancelar a qualquer momento, digite <code>/cancelar</code>.");
             return;
         }
 
@@ -322,13 +328,13 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         }
 
         Recipe existingRecipe = optionalRecipe.get();
-        sendTextMessage(chatId, "🔄 Atualizando a receita *" + existingRecipe.getTitle() + "*...");
+        sendTextMessage(chatId, "🔄 Atualizando a receita <b>" + TelegramHtmlUtil.escapeHtml(existingRecipe.getTitle()) + "</b>...");
 
         try {
             RecipeResponseDTO updatedDTO = geminiService.updateRecipe(existingRecipe, instructions);
             Recipe updatedRecipe = recipeService.updateRecipeFromDTO(chatId, recipeId, updatedDTO);
 
-            String responseMsg = "✅ *Receita atualizada com sucesso!*\n\n" + 
+            String responseMsg = "✅ <b>Receita atualizada com sucesso!</b>\n\n" + 
                                  recipeService.formatRecipeForTelegram(updatedRecipe);
             sendTextMessage(chatId, responseMsg);
         } catch (Exception e) {
@@ -340,14 +346,14 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
     private void handleDeleteCommand(Long chatId, String args) {
         if (args.isBlank()) {
             sendTextMessage(chatId, """
-                🗑️ *Como deletar uma receita:*
+                🗑️ <b>Como deletar uma receita:</b>
 
-                Digite: `/deletar <ID>` informando o número da receita.
+                Digite: <code>/deletar &lt;ID&gt;</code> informando o número da receita.
 
-                *Exemplo:*
-                • `/deletar 1`
+                <b>Exemplo:</b>
+                • <code>/deletar 1</code>
 
-                💡 Use `/receitas` para consultar os IDs das suas receitas.
+                💡 Use <code>/receitas</code> para consultar os IDs das suas receitas.
                 """);
             return;
         }
@@ -357,7 +363,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         try {
             recipeId = Long.parseLong(idStr);
         } catch (NumberFormatException e) {
-            sendTextMessage(chatId, "❌ ID inválido. Use um número (ex: `/deletar 1`).");
+            sendTextMessage(chatId, "❌ ID inválido. Use um número (ex: <code>/deletar 1</code>).");
             return;
         }
 
@@ -371,7 +377,7 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         boolean deleted = recipeService.deleteRecipe(chatId, recipeId);
 
         if (deleted) {
-            sendTextMessage(chatId, "🗑️ *Receita `[#" + recipeId + "] " + title + "` foi excluída com sucesso!*");
+            sendTextMessage(chatId, "🗑️ <b>Receita <code>[#" + recipeId + "] " + TelegramHtmlUtil.escapeHtml(title) + "</code> foi excluída com sucesso!</b>");
         } else {
             sendTextMessage(chatId, "❌ Não foi possível excluir a receita. Tente novamente.");
         }
@@ -384,35 +390,35 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
             return;
         }
 
-        StringBuilder sb = new StringBuilder("📚 *Suas Receitas Salvas:*\n\n");
+        StringBuilder sb = new StringBuilder("📚 <b>Suas Receitas Salvas:</b>\n\n");
         for (Recipe r : recipes) {
-            sb.append("• `[#").append(r.getId()).append("]` *").append(r.getTitle()).append("*");
+            sb.append("• <code>[#").append(r.getId()).append("]</code> <b>").append(TelegramHtmlUtil.escapeHtml(r.getTitle())).append("</b>");
             if (r.getSourceAuthor() != null && !r.getSourceAuthor().isBlank()) {
-                sb.append(" _(por ").append(r.getSourceAuthor()).append(")_");
+                sb.append(" <i>(por ").append(TelegramHtmlUtil.escapeHtml(r.getSourceAuthor())).append(")</i>");
             }
             sb.append("\n");
         }
-        sb.append("\n💡 *Dicas:*\n• Digite `/buscar <nome ou ID>` para ver os detalhes da receita.\n• Digite `/atualizar <ID> <alteração>` para editar qualquer informação.\n• Digite `/deletar <ID>` para apagar uma receita.");
+        sb.append("\n💡 <b>Dicas:</b>\n• Digite <code>/buscar &lt;nome ou ID&gt;</code> para ver os detalhes da receita.\n• Digite <code>/atualizar &lt;ID&gt; &lt;alteração&gt;</code> para editar qualquer informação.\n• Digite <code>/deletar &lt;ID&gt;</code> para apagar uma receita.");
         sendTextMessage(chatId, sb.toString());
     }
 
     private void sendHelpMessage(Long chatId, String userName) {
         String msg = String.format("""
-            👨‍🍳 *Olá, %s! Bem-vindo ao ChefBot!*
+            👨‍🍳 <b>Olá, %s! Bem-vindo ao ChefBot!</b>
 
             Eu sou o seu caderno inteligente de receitas.
             
-            *Como salvar novas receitas:*
-            🎙️ *Áudio:* Mande um áudio explicando uma receita com ingredientes e preparo.
-            ✍️ *Texto:* Envie o texto da receita de forma livre.
+            <b>Como salvar novas receitas:</b>
+            🎙️ <b>Áudio:</b> Mande um áudio explicando uma receita com ingredientes e preparo.
+            ✍️ <b>Texto:</b> Envie o texto da receita de forma livre.
             
-            *Comandos disponíveis:*
-            • `/receitas` - Lista todas as suas receitas salvas com seus IDs.
-            • `/buscar <termo>` - Busca receitas por nome, ingrediente, categoria ou ID.
-            • `/atualizar <ID> <alteração>` - Atualiza título, autor, ingredientes ou preparo de uma receita existente.
-            • `/deletar <ID>` - Exclui uma receita do seu caderno.
-            • `/ajuda` - Mostra esta mensagem de ajuda.
-            """, userName);
+            <b>Comandos disponíveis:</b>
+            • <code>/receitas</code> - Lista todas as suas receitas salvas com seus IDs.
+            • <code>/buscar &lt;termo&gt;</code> - Busca receitas por nome, ingrediente, categoria ou ID.
+            • <code>/atualizar &lt;ID&gt; &lt;alteração&gt;</code> - Atualiza título, autor, ingredientes ou preparo de uma receita existente.
+            • <code>/deletar &lt;ID&gt;</code> - Exclui uma receita do seu caderno.
+            • <code>/ajuda</code> - Mostra esta mensagem de ajuda.
+            """, TelegramHtmlUtil.escapeHtml(userName));
         sendTextMessage(chatId, msg);
     }
 
@@ -421,15 +427,15 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
             SendMessage message = SendMessage.builder()
                 .chatId(chatId.toString())
                 .text(text)
-                .parseMode("Markdown")
+                .parseMode("HTML")
                 .build();
             telegramClient.execute(message);
         } catch (Exception e) {
-            log.warn("Erro ao enviar mensagem Markdown, tentando texto puro: {}", e.getMessage());
+            log.warn("Erro ao enviar mensagem HTML, tentando texto puro: {}", e.getMessage());
             try {
                 SendMessage fallback = SendMessage.builder()
                     .chatId(chatId.toString())
-                    .text(text.replace("*", "").replace("`", "").replace("_", ""))
+                    .text(TelegramHtmlUtil.stripHtml(text))
                     .build();
                 telegramClient.execute(fallback);
             } catch (Exception ex) {
