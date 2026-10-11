@@ -90,50 +90,56 @@ public class RecipeService {
     @Transactional
     public Recipe updateRecipeFromDTO(Long telegramChatId, Long recipeId, RecipeResponseDTO dto) {
         Recipe recipe = recipeRepository.findByUserTelegramChatIdAndId(telegramChatId, recipeId)
-            .orElseThrow(() -> new RuntimeException("Receita não encontrada para este usuário."));
+            .orElseThrow(() -> new IllegalArgumentException("Receita não encontrada para este usuário."));
 
         if (dto.title() != null && !dto.title().isBlank()) {
-            recipe.setTitle(dto.title());
+            recipe.setTitle(dto.title().trim());
         }
         if (dto.category() != null) {
-            recipe.setCategory(dto.category());
+            recipe.setCategory(dto.category().isBlank() ? null : dto.category().trim());
         }
         if (dto.sourceAuthor() != null) {
-            recipe.setSourceAuthor(dto.sourceAuthor());
+            recipe.setSourceAuthor(dto.sourceAuthor().isBlank() ? null : dto.sourceAuthor().trim());
         }
         if (dto.prepTimeMinutes() != null) {
-            recipe.setPrepTimeMinutes(dto.prepTimeMinutes());
+            recipe.setPrepTimeMinutes(dto.prepTimeMinutes() > 0 ? dto.prepTimeMinutes() : null);
         }
         if (dto.portions() != null) {
-            recipe.setPortions(dto.portions());
+            recipe.setPortions(dto.portions() > 0 ? dto.portions() : null);
         }
 
-        // Atualizar Ingredientes
+        // Atualizar Ingredientes com salvaguarda de integridade
         if (dto.ingredients() != null && !dto.ingredients().isEmpty()) {
             recipe.getIngredients().clear();
             for (IngredientDTO ingDTO : dto.ingredients()) {
-                Ingredient ingredient = new Ingredient();
-                ingredient.setName(ingDTO.name());
-                ingredient.setQuantity(ingDTO.quantity());
-                ingredient.setUnit(ingDTO.unit());
-                ingredient.setNotes(ingDTO.notes());
-                recipe.addIngredient(ingredient);
+                if (ingDTO.name() != null && !ingDTO.name().isBlank()) {
+                    Ingredient ingredient = new Ingredient();
+                    ingredient.setName(ingDTO.name().trim());
+                    ingredient.setQuantity(ingDTO.quantity());
+                    ingredient.setUnit(ingDTO.unit());
+                    ingredient.setNotes(ingDTO.notes());
+                    recipe.addIngredient(ingredient);
+                }
             }
         }
 
-        // Atualizar Instruções
+        // Atualizar Instruções com salvaguarda de integridade
         if (dto.instructions() != null && !dto.instructions().isEmpty()) {
             recipe.getInstructions().clear();
+            int step = 1;
             for (InstructionDTO instDTO : dto.instructions()) {
-                Instruction instruction = new Instruction();
-                instruction.setStepNumber(instDTO.stepNumber());
-                instruction.setInstructionText(instDTO.description());
-                recipe.addInstruction(instruction);
+                if (instDTO.description() != null && !instDTO.description().isBlank()) {
+                    Instruction instruction = new Instruction();
+                    instruction.setStepNumber(instDTO.stepNumber() != null ? instDTO.stepNumber() : step);
+                    instruction.setInstructionText(instDTO.description().trim());
+                    recipe.addInstruction(instruction);
+                    step++;
+                }
             }
         }
 
-        Recipe updated = recipeRepository.save(recipe);
-        log.info("Receita ID: {} atualizada com sucesso.", updated.getId());
+        Recipe updated = recipeRepository.saveAndFlush(recipe);
+        log.info("Receita ID: {} atualizada com sucesso no banco de dados.", updated.getId());
         return updated;
     }
 
