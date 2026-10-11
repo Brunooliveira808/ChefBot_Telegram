@@ -18,6 +18,7 @@ import org.springframework.web.client.RestClient;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class GeminiService {
@@ -88,31 +89,33 @@ public class GeminiService {
         """;
 
     private static final String UPDATE_SYSTEM_PROMPT = """
-        Você é um assistente culinário especialista em editar e atualizar receitas já cadastradas.
+        Você é um assistente culinário especialista em editar receitas já cadastradas.
         
         Você receberá:
         1. Os dados ATUAIS da receita em formato JSON.
-        2. O PEDIDO DE ALTERAÇÃO do usuário (ex: "mude o título para X", "troque o ingrediente Y por Z", "o autor é minha vó", "acrescente 1 colher de sal", "o tempo de preparo é 45 minutos").
+        2. O PEDIDO DE ALTERAÇÃO do usuário.
         
-        REGRAS DE ATUALIZAÇÃO:
-        - Aplique as alterações solicitadas pelo usuário com exatidão.
-        - Mantenha todos os outros campos, ingredientes e passos que NÃO foram solicitados para alteração exatamente como estavam.
-        - Defina "isRecipe": true e "refusalReason": null.
+        REGRAS INEGOCIÁVEIS:
+        1. IMUTABILIDADE: Você NÃO DEVE alterar, resumir, traduzir ou reescrever NENHUM ingrediente ou instrução que o usuário não tenha pedido explicitamente para mudar.
+        2. PRESERVAÇÃO DE LISTAS: Se o usuário pedir para adicionar um ingrediente, adicione-o ao final da lista de ingredientes existente, mantendo todos os anteriores intactos.
+        3. SUBSTITUIÇÃO: Se o usuário pedir para trocar um ingrediente (ex: "troque açúcar por adoçante"), substitua apenas o ingrediente especificado mantendo a posição e preserve todos os outros.
+        4. INTEGRIDADE DOS PASSOS: Mantenha a redação original do modo de preparo, a menos que o usuário peça uma alteração explícita nos passos.
+        5. RESPOSTA: Responda APENAS com o objeto JSON final completo atualizado.
         
         FORMATO OBRIGATÓRIO DO JSON:
         {
           "isRecipe": true,
           "refusalReason": null,
-          "title": "Título atualizado ou mantido",
-          "category": "Categoria atualizada ou mantida",
-          "sourceAuthor": "Autor atualizado ou mantido",
+          "title": "Título",
+          "category": "Categoria ou null",
+          "sourceAuthor": "Autor ou null",
           "prepTimeMinutes": 30,
           "portions": 4,
           "ingredients": [
             {
-              "name": "Nome do ingrediente",
-              "quantity": "quantidade",
-              "unit": "unidade ou null",
+              "name": "Nome",
+              "quantity": "2",
+              "unit": "xícaras",
               "notes": null
             }
           ],
@@ -123,8 +126,6 @@ public class GeminiService {
             }
           ]
         }
-        
-        Responda APENAS com o objeto JSON válido.
         """;
 
     public GeminiService(RestClient restClient, ObjectMapper objectMapper) {
@@ -176,9 +177,88 @@ public class GeminiService {
     }
 
     /**
+     * Tenta aplicar alterações simples e determinísticas de campos sem precisar chamar a API do Gemini.
+     */
+    Optional<RecipeResponseDTO> tryDirectFieldEdit(Recipe existingRecipe, String updateInstructions) {
+        if (updateInstructions == null || updateInstructions.isBlank()) {
+            return Optional.empty();
+        }
+
+        String trimmed = updateInstructions.trim();
+        List<IngredientDTO> ingredientsDTO = existingRecipe.getIngredients().stream()
+            .map(i -> new IngredientDTO(i.getName(), i.getQuantity(), i.getUnit(), i.getNotes()))
+            .toList();
+
+        List<InstructionDTO> instructionsDTO = existingRecipe.getInstructions().stream()
+            .map(inst -> new InstructionDTO(inst.getStepNumber(), inst.getInstructionText()))
+            .toList();
+
+        // 1. Alterar Autor
+        java.util.regex.Matcher authorMatcher = java.util.regex.Pattern
+            .compile("(?i)^(?:mudar?\\s+(?:o\\s+)?)?autor\\s*(?:para|pra|=|:|[eé])\\s*(.+)$")
+            .matcher(trimmed);
+        if (authorMatcher.matches()) {
+            String newAuthor = authorMatcher.group(1).trim();
+            return Optional.of(new RecipeResponseDTO(
+                true, null, existingRecipe.getTitle(), existingRecipe.getCategory(),
+                newAuthor, existingRecipe.getPrepTimeMinutes(), existingRecipe.getPortions(),
+                ingredientsDTO, instructionsDTO
+            ));
+        }
+
+        // 2. Alterar Título
+        java.util.regex.Matcher titleMatcher = java.util.regex.Pattern
+            .compile("(?i)^(?:mudar?\\s+(?:o\\s+)?)?t[íi]tulo\\s*(?:para|pra|=|:|[eé])\\s*(.+)$")
+            .matcher(trimmed);
+        if (titleMatcher.matches()) {
+            String newTitle = titleMatcher.group(1).trim();
+            return Optional.of(new RecipeResponseDTO(
+                true, null, newTitle, existingRecipe.getCategory(),
+                existingRecipe.getSourceAuthor(), existingRecipe.getPrepTimeMinutes(), existingRecipe.getPortions(),
+                ingredientsDTO, instructionsDTO
+            ));
+        }
+
+        // 3. Alterar Tempo de Preparo
+        java.util.regex.Matcher timeMatcher = java.util.regex.Pattern
+            .compile("(?i)^(?:mudar?\\s+(?:o\\s+)?)?tempo(?:\\s+de\\s+preparo)?\\s*(?:para|pra|=|:|[eé]|de)?\\s*(\\d+)(?:\\s*(?:min|minutos))?$")
+            .matcher(trimmed);
+        if (timeMatcher.matches()) {
+            int newTime = Integer.parseInt(timeMatcher.group(1));
+            return Optional.of(new RecipeResponseDTO(
+                true, null, existingRecipe.getTitle(), existingRecipe.getCategory(),
+                existingRecipe.getSourceAuthor(), newTime, existingRecipe.getPortions(),
+                ingredientsDTO, instructionsDTO
+            ));
+        }
+
+        // 4. Alterar Rendimento / Porções
+        java.util.regex.Matcher portionsMatcher = java.util.regex.Pattern
+            .compile("(?i)^(?:mudar?\\s+(?:o\\s+)?)?(?:rendimento|por[çc][õo]es)\\s*(?:para|pra|=|:|[eé]|de)?\\s*(\\d+)(?:\\s*por[çc][õo]es)?$")
+            .matcher(trimmed);
+        if (portionsMatcher.matches()) {
+            int newPortions = Integer.parseInt(portionsMatcher.group(1));
+            return Optional.of(new RecipeResponseDTO(
+                true, null, existingRecipe.getTitle(), existingRecipe.getCategory(),
+                existingRecipe.getSourceAuthor(), existingRecipe.getPrepTimeMinutes(), newPortions,
+                ingredientsDTO, instructionsDTO
+            ));
+        }
+
+        return Optional.empty();
+    }
+
+    /**
      * Atualiza uma receita existente com base nas instruções fornecidas pelo usuário.
      */
     public RecipeResponseDTO updateRecipe(Recipe existingRecipe, String updateInstructions) {
+        // Tentar Fast-Path para edições pontuais simples sem gastar IA
+        Optional<RecipeResponseDTO> directEdit = tryDirectFieldEdit(existingRecipe, updateInstructions);
+        if (directEdit.isPresent()) {
+            log.info("Edição pontual da receita aplicada diretamente (Fast-Path sem chamada externa de IA).");
+            return directEdit.get();
+        }
+
         try {
             List<IngredientDTO> ingredientsDTO = existingRecipe.getIngredients().stream()
                 .map(i -> new IngredientDTO(i.getName(), i.getQuantity(), i.getUnit(), i.getNotes()))
