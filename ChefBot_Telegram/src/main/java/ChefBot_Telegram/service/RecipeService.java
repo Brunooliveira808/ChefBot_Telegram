@@ -18,6 +18,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class RecipeService {
@@ -158,8 +159,37 @@ public class RecipeService {
         return recipeRepository.findByUserTelegramChatId(telegramChatId);
     }
 
+    private static final Set<String> STOPWORDS = Set.of(
+        "de", "da", "do", "das", "dos", "com", "sem", "para", "em", "e", "ou", "a", "o", "as", "os", "um", "uma", "uns", "umas", "no", "na", "nos", "nas"
+    );
+
+    public List<String> extractSearchTokens(String query) {
+        if (query == null) return List.of();
+        String normalized = normalizeText(query);
+        String[] words = normalized.split("[^a-z0-9]+");
+        List<String> tokens = new ArrayList<>();
+        for (String w : words) {
+            if (!w.isBlank() && !STOPWORDS.contains(w)) {
+                tokens.add(w);
+            }
+        }
+        return tokens.isEmpty() && !normalized.isBlank() ? List.of(normalized.trim()) : tokens;
+    }
+
+    private boolean textMatchesToken(String text, String token) {
+        if (text == null || token == null || token.isBlank()) return false;
+        String normalizedText = normalizeText(text);
+        if (normalizedText.contains(token)) return true;
+        // Tratamento simples de plural/singular em português (ex: ovos -> ovo)
+        if (token.endsWith("s") && token.length() > 3) {
+            String singular = token.substring(0, token.length() - 1);
+            if (normalizedText.contains(singular)) return true;
+        }
+        return false;
+    }
+
     /**
-     * Busca receitas pelo ID ou por palavras-chave com normalização de acentos e termos parciais.
+     * Busca receitas pelo ID ou por palavras-chave com relevância, tokenização e busca em instruções.
      */
     @Transactional(readOnly = true)
     public List<Recipe> searchRecipes(Long telegramChatId, String query) {
@@ -169,60 +199,94 @@ public class RecipeService {
 
         String cleanQuery = query.trim();
         List<Recipe> allUserRecipes = recipeRepository.findByUserTelegramChatId(telegramChatId);
-        List<Recipe> results = new ArrayList<>();
+        if (allUserRecipes.isEmpty()) {
+            return List.of();
+        }
 
-        // 1. Verificação por ID (ex: "1" ou "#1")
+        List<String> tokens = extractSearchTokens(cleanQuery);
+        String normalizedFullQuery = normalizeText(cleanQuery);
+
+        // Checar se a query tem ID numérico direto (ex: "1" ou "#1")
+        Long explicitId = null;
         String numeric = cleanQuery.startsWith("#") ? cleanQuery.substring(1).trim() : cleanQuery;
         if (numeric.matches("^\\d+$")) {
             try {
-                Long id = Long.parseLong(numeric);
-                for (Recipe r : allUserRecipes) {
-                    if (r.getId().equals(id)) {
-                        results.add(r);
-                        return results;
-                    }
-                }
+                explicitId = Long.parseLong(numeric);
             } catch (NumberFormatException ignored) {}
         }
 
-        // 2. Busca por texto normalizado (sem acentos, minúsculo)
-        String normalizedQuery = normalizeText(cleanQuery);
+        record ScoredRecipe(Recipe recipe, int score) {}
+        List<ScoredRecipe> scored = new ArrayList<>();
 
         for (Recipe r : allUserRecipes) {
-            boolean matches = false;
+            int score = 0;
 
-            // Checa título
-            if (normalizeText(r.getTitle()).contains(normalizedQuery)) {
-                matches = true;
+            // 1. Prioridade máxima se o ID for idêntico ao buscado
+            if (explicitId != null && r.getId().equals(explicitId)) {
+                score += 100;
             }
-            // Checa categoria
-            else if (r.getCategory() != null && normalizeText(r.getCategory()).contains(normalizedQuery)) {
-                matches = true;
+
+            // 2. Pontuação por correspondência exata de frase completa no título
+            String normalizedTitle = normalizeText(r.getTitle());
+            if (!normalizedFullQuery.isBlank() && normalizedTitle.contains(normalizedFullQuery)) {
+                score += 25;
             }
-            // Checa autor
-            else if (r.getSourceAuthor() != null && normalizeText(r.getSourceAuthor()).contains(normalizedQuery)) {
-                matches = true;
-            }
-            // Checa ingredientes
-            else if (r.getIngredients() != null) {
-                for (Ingredient ing : r.getIngredients()) {
-                    if (normalizeText(ing.getName()).contains(normalizedQuery) ||
-                        (ing.getNotes() != null && normalizeText(ing.getNotes()).contains(normalizedQuery))) {
-                        matches = true;
-                        break;
+
+            int titleTokensMatched = 0;
+
+            for (String token : tokens) {
+                // Título: peso 10 por token
+                if (textMatchesToken(r.getTitle(), token)) {
+                    score += 10;
+                    titleTokensMatched++;
+                }
+                // Categoria: peso 5 por token
+                if (r.getCategory() != null && textMatchesToken(r.getCategory(), token)) {
+                    score += 5;
+                }
+                // Autor: peso 5 por token
+                if (r.getSourceAuthor() != null && textMatchesToken(r.getSourceAuthor(), token)) {
+                    score += 5;
+                }
+                // Ingredientes: peso 4 por token
+                if (r.getIngredients() != null) {
+                    for (Ingredient ing : r.getIngredients()) {
+                        if (textMatchesToken(ing.getName(), token) || 
+                            (ing.getNotes() != null && textMatchesToken(ing.getNotes(), token))) {
+                            score += 4;
+                            break;
+                        }
+                    }
+                }
+                // Modo de preparo / Instruções: peso 2 por token
+                if (r.getInstructions() != null) {
+                    for (Instruction inst : r.getInstructions()) {
+                        if (textMatchesToken(inst.getInstructionText(), token)) {
+                            score += 2;
+                            break;
+                        }
                     }
                 }
             }
 
-            if (matches && results.stream().noneMatch(existing -> existing.getId().equals(r.getId()))) {
-                results.add(r);
+            // Bônus se todos os tokens foram encontrados no título
+            if (!tokens.isEmpty() && titleTokensMatched == tokens.size()) {
+                score += 15;
+            }
+
+            if (score > 0) {
+                scored.add(new ScoredRecipe(r, score));
             }
         }
 
-        return results;
+        // Ordenar por pontuação decrescente (mais relevantes primeiro)
+        return scored.stream()
+                .sorted((a, b) -> Integer.compare(b.score(), a.score()))
+                .map(ScoredRecipe::recipe)
+                .toList();
     }
 
-    private String normalizeText(String input) {
+    public String normalizeText(String input) {
         if (input == null) return "";
         return Normalizer.normalize(input, Normalizer.Form.NFD)
             .replaceAll("\\p{M}", "")
