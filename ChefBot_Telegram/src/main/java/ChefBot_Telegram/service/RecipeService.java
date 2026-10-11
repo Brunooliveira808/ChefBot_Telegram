@@ -356,6 +356,21 @@ public class RecipeService {
 
         return sb.toString();
     }
+
+    /**
+     * Formata um resumo compacto de uma linha da receita para listagens e resultados múltiplos.
+     */
+    public String formatRecipeSummary(Recipe recipe) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("• `[#").append(recipe.getId()).append("]` *").append(recipe.getTitle()).append("*");
+        if (recipe.getCategory() != null && !recipe.getCategory().isBlank()) {
+            sb.append(" _(").append(recipe.getCategory()).append(")_");
+        }
+        if (recipe.getPrepTimeMinutes() != null) {
+            sb.append(" ⏱️ ").append(recipe.getPrepTimeMinutes()).append("m");
+        }
+        return sb.toString();
+    }
 }
 
 

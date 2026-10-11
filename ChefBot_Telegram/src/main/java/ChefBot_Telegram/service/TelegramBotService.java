@@ -4,6 +4,7 @@ import ChefBot_Telegram.dto.RecipeResponseDTO;
 import ChefBot_Telegram.model.Recipe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
@@ -31,12 +32,21 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
     private final GeminiService geminiService;
     private final RecipeService recipeService;
 
+    @Autowired
     public TelegramBotService(
             @Value("${telegram.bot.token}") String botToken,
             GeminiService geminiService,
             RecipeService recipeService) {
+        this(botToken, new OkHttpTelegramClient(botToken), geminiService, recipeService);
+    }
+
+    TelegramBotService(
+            String botToken,
+            TelegramClient telegramClient,
+            GeminiService geminiService,
+            RecipeService recipeService) {
         this.botToken = botToken;
-        this.telegramClient = new OkHttpTelegramClient(botToken);
+        this.telegramClient = telegramClient;
         this.geminiService = geminiService;
         this.recipeService = recipeService;
     }
@@ -94,6 +104,19 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
             return;
         }
 
+        // Intercepta dúvidas ou pedidos de busca formulados em linguagem natural
+        String lowerText = text.toLowerCase().trim();
+        if (lowerText.startsWith("como faz ") || lowerText.startsWith("tem receita de ") || 
+            lowerText.startsWith("qual a receita de ") || lowerText.startsWith("procurar ") ||
+            lowerText.startsWith("busca ")) {
+            
+            String searchTerm = text.replaceAll("(?i)^(como faz|tem receita de|qual a receita de|procurar|busca)\\s*", "").trim();
+            if (!searchTerm.isBlank()) {
+                handleSearchCommand(chatId, searchTerm);
+                return;
+            }
+        }
+
         // Se for texto comum, passa pelo Gemini para validação e extração
         sendTextMessage(chatId, "✍️ Analisando sua mensagem com IA...");
 
@@ -148,31 +171,59 @@ public class TelegramBotService implements SpringLongPollingBot, LongPollingSing
         }
     }
 
-    private void handleSearchCommand(Long chatId, String args) {
+    void handleSearchCommand(Long chatId, String args) {
         if (args.isBlank()) {
             sendTextMessage(chatId, """
-                🔍 *Como buscar receitas:*
+                🔍 *Como buscar no seu caderno:*
 
-                Digite `/buscar <termo>` informando o nome, ingrediente, categoria ou ID da receita.
+                Você pode pesquisar de várias formas:
+                • *Por Nome:* `/buscar bolo` ou `/buscar torta de limao`
+                • *Por Ingrediente:* `/buscar chocolate` ou `/buscar frango`
+                • *Por Categoria:* `/buscar sobremesa` ou `/buscar almoço`
+                • *Por Modo de Preparo:* `/buscar airfryer` ou `/buscar forno`
+                • *Por ID Direto:* `/buscar 1` (mostra a receita completa)
 
-                *Exemplos:*
-                • `/buscar bolo`
-                • `/buscar cenoura`
-                • `/buscar sobremesa`
-                • `/buscar 1`
+                💡 *Dica:* Não se preocupe com acentos ou letras maiúsculas!
                 """);
             return;
         }
 
         List<Recipe> recipes = recipeService.searchRecipes(chatId, args);
         if (recipes.isEmpty()) {
-            sendTextMessage(chatId, "🔍 Nenhuma receita encontrada para o termo: *" + args + "*\n\nUse `/receitas` para ver todas as suas receitas salvas.");
+            List<Recipe> recent = recipeService.findRecipesByChatId(chatId);
+            StringBuilder sb = new StringBuilder();
+            sb.append("🔍 *Nenhuma receita encontrada para:* \"").append(args).append("\"\n\n");
+            sb.append("💡 *Dicas para encontrar:*\n");
+            sb.append("• Tente usar uma única palavra-chave (ex: 'frango' em vez de 'frango desfiado com molho').\n");
+            sb.append("• Use `/receitas` para ver todas as suas receitas cadastradas.\n");
+
+            if (!recent.isEmpty()) {
+                sb.append("\n📚 *Suas receitas recentes:*\n");
+                int limit = Math.min(3, recent.size());
+                for (int i = 0; i < limit; i++) {
+                    sb.append(recipeService.formatRecipeSummary(recent.get(i))).append("\n");
+                }
+            }
+            sendTextMessage(chatId, sb.toString());
             return;
         }
 
-        for (Recipe r : recipes) {
-            sendTextMessage(chatId, recipeService.formatRecipeForTelegram(r));
+        // Se houver exatamente 1 resultado, exibe a ficha completa
+        if (recipes.size() == 1) {
+            sendTextMessage(chatId, recipeService.formatRecipeForTelegram(recipes.get(0)));
+            return;
         }
+
+        // Se houver múltiplos resultados, exibe uma lista compacta em UMA única mensagem
+        StringBuilder sb = new StringBuilder();
+        sb.append("🔍 *Encontrei ").append(recipes.size()).append(" receitas para \"").append(args).append("\":*\n\n");
+
+        for (Recipe r : recipes) {
+            sb.append(recipeService.formatRecipeSummary(r)).append("\n");
+        }
+
+        sb.append("\n👉 *Para abrir a receita completa, digite:* `/buscar <ID>` (ex: `/buscar ").append(recipes.get(0).getId()).append("`)");
+        sendTextMessage(chatId, sb.toString());
     }
 
     private void handleUpdateCommand(Long chatId, String args) {
