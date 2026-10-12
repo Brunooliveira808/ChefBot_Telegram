@@ -162,18 +162,9 @@ Assim que a aplicação inicializar:
 
 ---
 
-## 📂 Estrutura das Tarefas Realizadas
+## Próxima Alteração
 
-O desenvolvimento e aprimoramento contínuo deste projeto foram documentados em especificações modulares na pasta [`tasks/`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks):
-
-- [`TASK_00`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_00_CONFIGURACAO_E_AMBIENTE_DE_TESTES.md): Configuração de ambiente e isolamento da suíte de testes.
-- [`TASK_01`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_01_CORRECAO_MODELOS_E_CLIENTE_GEMINI.md): Suporte a modelos ativos do Gemini e timeouts no cliente HTTP.
-- [`TASK_02`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_02_MOTOR_DE_BUSCA_NORMALIZACAO_E_TOKENIZACAO.md): Motor de busca por relevância com tokenização, lematização e stopwords.
-- [`TASK_03`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_03_UX_E_APRESENTACAO_DE_BUSCA_TELEGRAM.md): UX no Telegram, eliminação de spam e interpretação de linguagem natural.
-- [`TASK_04`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_04_PERSISTENCIA_E_INTEGRIDADE_ATUALIZACAO_JPA.md): Persistência JPA com integridade de coleções e `saveAndFlush`.
-- [`TASK_05`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_05_LOGICA_DE_ATUALIZACAO_COM_IA_E_PROMPT.md): Prompt blindado para imutabilidade e fast-path determinístico.
-- [`TASK_06`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_06_FLUXO_CONVERSACIONAL_E_ESTADO_DE_EDICAO.md): Máquina de estados para edição em 2 passos e resolução de receitas por nome.
-- [`TASK_07`](file:///home/bruno/projetos_Java/ChefBot_Telegram/tasks/TASK_07_ROBUSTEZ_TELEGRAM_FORMATACAO_E_MIDIA.md): Sanitização HTML e recepção de arquivos de áudio externos.
+1. Adicionar Document Database
 
 ---
 
